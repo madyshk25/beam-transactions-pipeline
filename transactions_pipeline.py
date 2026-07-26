@@ -83,16 +83,24 @@ def run():
             )
         )
 
+        # Skip blank lines (e.g. a trailing empty line at end of file) before parsing.
+        non_empty_lines = lines | "SkipBlankLines" >> beam.Filter(
+            lambda line: line.strip() != ""
+        )
+
         rows = (
-            lines
+            non_empty_lines
             | "ParseRows" >> beam.Map(
                 parse_csv_line, header=beam.pvalue.AsSingleton(header_pcoll)
             )
         )
 
-        # Drop the header row itself (where 'timestamp' column equals literal 'timestamp').
-        data_rows = rows | "DropHeaderRow" >> beam.Filter(
+        # Drop the header row itself, and drop any malformed row missing
+        # required columns (e.g. from an unexpected blank/short line).
+        data_rows = rows | "DropHeaderAndMalformedRows" >> beam.Filter(
             lambda row: row.get("timestamp") != "timestamp"
+            and "transaction_amount" in row
+            and row["transaction_amount"] != ""
         )
 
         (
